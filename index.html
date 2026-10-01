@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Miss Mia AI</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Axios -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    html, body, #root {
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      padding: 0;
+      background-color: #0b0612;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      color: #fdf2f8;
+    }
+
+    .scroll-touch {
+      -webkit-overflow-scrolling: touch;
+      overflow-y: auto;
+    }
+
+    /* Glow & Accent Shadows */
+    .mia-neon-glow {
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.35), 0 0 45px rgba(168, 85, 247, 0.2);
+      border: 1.5px solid rgba(244, 114, 182, 0.6);
+    }
+
+    .glass-panel {
+      background: rgba(19, 10, 28, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* Custom Sleek Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #0b0612; }
+    ::-webkit-scrollbar-thumb { background: #2f1b4a; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #ec4899; }
+  </style>
+</head>
+<body class="selection:bg-pink-500 selection:text-white antialiased overflow-hidden">
+
+  <div id="root" class="w-full h-full flex flex-col"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const API_BASE = "https://ai-e8mh.onrender.com/api";
+    axios.defaults.withCredentials = true;
+
+    // Russian blonde aesthetic portrait matching the style
+    const MIA_AVATAR = "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80";
+
+    axios.interceptors.request.use((config) => {
+      const token = localStorage.getItem("token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    }, (error) => Promise.reject(error));
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [authMode, setAuthMode] = useState('login');
+      
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [username, setUsername] = useState('');
+      const [authError, setAuthError] = useState('');
+
+      const [conversations, setConversations] = useState([]);
+      const [currentChatId, setCurrentChatId] = useState(null);
+      const [messages, setMessages] = useState([]);
+      const [inputMessage, setInputMessage] = useState('');
+      const [sending, setSending] = useState(false);
+      const [sidebarOpen, setSidebarOpen] = useState(false);
+      
+      const chatContainerRef = useRef(null);
+
+      useEffect(() => {
+        checkAuth();
+      }, []);
+
+      useEffect(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, [messages, sending]);
+
+      const checkAuth = async () => {
+        try {
+          const res = await axios.get(`${API_BASE}/auth/me`);
+          if (res.data.user) {
+            setUser(res.data.user);
+            await loadInitialChats();
+          }
+        } catch (err) {
+          setUser(null);
+          localStorage.removeItem("token");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const loadInitialChats = async () => {
+        try {
+          const res = await axios.get(`${API_BASE}/chat/conversations`);
+          setConversations(res.data || []);
+          if (res.data && res.data.length > 0) {
+            const firstId = res.data[0]._id;
+            setCurrentChatId(firstId);
+            const msgRes = await axios.get(`${API_BASE}/chat/conversations/${firstId}/messages`);
+            setMessages(msgRes.data || []);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        try {
+          const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+          const payload = authMode === 'login' 
+            ? { email, password } 
+            : { username, email, password };
+
+          const res = await axios.post(`${API_BASE}${endpoint}`, payload);
+          if (res.data.token) {
+            localStorage.setItem("token", res.data.token);
+          }
+          setUser(res.data.user);
+          await loadInitialChats();
+        } catch (err) {
+          setAuthError(err.response?.data?.message || 'Authentication failed. Please try again.');
+        }
+      };
+
+      const handleLogout = async () => {
+        try {
+          await axios.post(`${API_BASE}/auth/logout`);
+        } catch (err) {
+          console.error(err);
+        } finally {
+          localStorage.removeItem("token");
+          setUser(null);
+          setConversations([]);
+          setMessages([]);
+          setCurrentChatId(null);
+          setSidebarOpen(false);
+        }
+      };
+
+      const createNewChat = async () => {
+        try {
+          const res = await axios.post(`${API_BASE}/chat/conversations`);
+          setConversations(prev => [res.data, ...prev]);
+          setCurrentChatId(res.data._id);
+          setMessages([]);
+          setSidebarOpen(false);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const selectConversation = async (id) => {
+        setCurrentChatId(id);
+        setSidebarOpen(false);
+        try {
+          const res = await axios.get(`${API_BASE}/chat/conversations/${id}/messages`);
+          setMessages(res.data || []);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const deleteConversation = async (e, id) => {
+        e.stopPropagation();
+        try {
+          await axios.delete(`${API_BASE}/chat/conversations/${id}`);
+          const updated = conversations.filter(c => c._id !== id);
+          setConversations(updated);
+          if (currentChatId === id) {
+            if (updated.length > 0) selectConversation(updated[0]._id);
+            else { setCurrentChatId(null); setMessages([]); }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const sendMessage = async (e, customText = null) => {
+        if (e) e.preventDefault();
+        const textToSend = customText || inputMessage;
+        if (!textToSend.trim() || sending) return;
+
+        let activeId = currentChatId;
+
+        if (!activeId) {
+          try {
+            const res = await axios.post(`${API_BASE}/chat/conversations`);
+            activeId = res.data._id;
+            setCurrentChatId(activeId);
+            setConversations(prev => [res.data, ...prev]);
+          } catch (err) {
+            return;
+          }
+        }
+
+        setInputMessage('');
+        setMessages(prev => [...prev, { role: 'user', content: textToSend }]);
+        setSending(true);
+
+        try {
+          const res = await axios.post(`${API_BASE}/chat/conversations/${activeId}/messages`, {
+            message: textToSend
+          });
+          
+          setMessages(prev => [...prev, { role: 'assistant', content: res.data.message }]);
+          
+          if (typeof res.data.messagesLeft !== 'undefined') {
+            setUser(prev => ({ ...prev, messagesLeft: res.data.messagesLeft }));
+          }
+        } catch (err) {
+          const errMsg = err.response?.status === 403 
+            ? (err.response?.data?.message || 'Out of message credits.') 
+            : 'Connection error. Please try again.';
+          setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
+        } finally {
+          setSending(false);
+        }
+      };
+
+      const activeChatTitle = conversations.find(c => c._id === currentChatId)?.title || "New Chat";
+
+      if (loading) {
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#0b0612]">
+            <div className="w-10 h-10 border-2 border-pink-500/20 border-t-pink-500 rounded-full animate-spin"></div>
+            <p className="text-xs text-pink-300/60 mt-4 tracking-wide font-medium">Loading Miss Mia...</p>
+          </div>
+        );
+      }
+
+      /* Login / Register Screen */
+      if (!user) {
+        return (
+          <div className="flex-1 flex items-center justify-center p-4 bg-[#0b0612] scroll-touch relative">
+            <div className="absolute inset-0 bg-gradient-to-tr from-pink-600/10 via-transparent to-purple-600/10 pointer-events-none"></div>
+            
+            <div className="w-full max-w-sm glass-panel border border-pink-500/20 rounded-3xl p-7 shadow-2xl relative z-10">
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden mx-auto mb-3 mia-neon-glow transform hover:scale-105 transition-transform duration-300">
+                  <img src={MIA_AVATAR} alt="Miss Mia" className="w-full h-full object-cover" />
+                </div>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight">Miss Mia <span className="text-pink-500">AI</span></h1>
+                <p className="text-pink-300/50 text-xs mt-1">Your Personal Intelligent Assistant</p>
+              </div>
+
+              {authError && (
+                <div className="bg-rose-950/60 border border-rose-500/50 text-rose-300 px-3 py-2 rounded-xl text-xs mb-4 text-center">
+                  {authError}
+                </div>
+              )}
+
+              <form onSubmit={handleAuth} className="space-y-3.5">
+                {authMode === 'register' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-pink-200/70 uppercase tracking-wider mb-1">Username</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={username} 
+                      onChange={e => setUsername(e.target.value)}
+                      placeholder="e.g. Alex"
+                      className="w-full bg-[#180e26] border border-purple-900/40 rounded-xl p-2.5 text-xs text-white placeholder-pink-300/30 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-pink-200/70 uppercase tracking-wider mb-1">Email Address</label>
+                  <input 
+                    type="email" 
+                    required 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full bg-[#180e26] border border-purple-900/40 rounded-xl p-2.5 text-xs text-white placeholder-pink-300/30 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-pink-200/70 uppercase tracking-wider mb-1">Password</label>
+                  <input 
+                    type="password" 
+                    required 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-[#180e26] border border-purple-900/40 rounded-xl p-2.5 text-xs text-white placeholder-pink-300/30 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none transition"
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-semibold py-2.5 rounded-xl text-xs transition duration-200 mt-2 shadow-lg shadow-pink-600/30 active:scale-95"
+                >
+                  {authMode === 'login' ? 'Sign In' : 'Create Account'}
+                </button>
+              </form>
+
+              <div className="mt-5 text-center">
+                <button 
+                  onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError(''); }}
+                  className="text-xs text-pink-400 hover:text-pink-300 hover:underline transition"
+                >
+                  {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      /* Main Chat Interface */
+      return (
+        <div className="relative w-full h-full flex overflow-hidden bg-[#0b0612]">
+          
+          {/* Mobile Overlay */}
+          {sidebarOpen && (
+            <div 
+              onClick={() => setSidebarOpen(false)} 
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 md:hidden"
+            />
+          )}
+
+          {/* Sidebar */}
+          <aside className={`
+            fixed top-0 bottom-0 left-0 z-40 w-68 bg-[#11091c] border-r border-purple-900/30 flex flex-col justify-between transition-transform duration-300 ease-in-out md:static md:translate-x-0
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          `}>
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="p-3.5 border-b border-purple-900/30 flex items-center justify-between bg-[#0e0717]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl overflow-hidden mia-neon-glow">
+                    <img src={MIA_AVATAR} alt="Miss Mia" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-white tracking-wide block">Miss Mia AI</span>
+                    <span className="text-[10px] text-pink-400/80 font-medium">Online</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSidebarOpen(false)}
+                  className="md:hidden text-pink-300 hover:text-white p-1.5 transition"
+                >
+                  <i className="fa-solid fa-xmark text-sm"></i>
+                </button>
+              </div>
+
+              {/* Credits Badge */}
+              <div className="p-3">
+                <div className="bg-[#180d26] p-2.5 rounded-xl border border-purple-900/40 flex items-center justify-between text-xs">
+                  <span className="text-pink-200/70 text-[11px] font-medium">Available Credits:</span>
+                  <span className="font-bold text-pink-400 bg-pink-500/10 px-2 py-0.5 rounded-full border border-pink-500/30">
+                    {user.messagesLeft ?? 0}
+                  </span>
+                </div>
+              </div>
+
+              {/* New Chat Button */}
+              <div className="px-3 pb-2">
+                <button 
+                  onClick={createNewChat}
+                  className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-pink-600/20 transition active:scale-95"
+                >
+                  <i className="fa-solid fa-plus text-[10px]"></i>
+                  <span>New Conversation</span>
+                </button>
+              </div>
+
+              {/* Conversations History */}
+              <div className="flex-1 scroll-touch px-2 space-y-1">
+                <div className="text-[10px] uppercase tracking-wider text-pink-300/40 px-2.5 py-1.5 font-bold">Recent History</div>
+                {conversations.length === 0 ? (
+                  <p className="text-center text-xs text-pink-300/30 py-6">No chat history yet</p>
+                ) : (
+                  conversations.map(chat => (
+                    <div 
+                      key={chat._id}
+                      onClick={() => selectConversation(chat._id)}
+                      className={`flex items-center justify-between p-2.5 rounded-xl text-xs cursor-pointer transition ${
+                        currentChatId === chat._id 
+                          ? 'bg-pink-600/25 border border-pink-500/40 text-white font-semibold shadow-sm' 
+                          : 'text-pink-200/70 hover:bg-[#190e29]'
+                      }`}
+                    >
+                      <span className="truncate flex-1 pr-2">{chat.title || 'Conversation'}</span>
+                      <button 
+                        onClick={(e) => deleteConversation(e, chat._id)}
+                        className="text-pink-400/40 hover:text-rose-400 p-1 transition"
+                      >
+                        <i className="fa-regular fa-trash-can text-[11px]"></i>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* User Account Info */}
+              <div className="p-3 border-t border-purple-900/30 bg-[#0e0717] flex items-center justify-between">
+                <div className="truncate pr-2">
+                  <p className="text-xs font-bold text-white truncate">{user.username}</p>
+                  <p className="text-[10px] text-pink-300/50 truncate">{user.email}</p>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="text-pink-300 hover:text-rose-400 p-2 rounded-lg hover:bg-pink-900/20 transition"
+                  title="Logout"
+                >
+                  <i className="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Chat View */}
+          <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#0b0612]">
+            
+            {/* Header */}
+            <header className="h-14 bg-[#11091c]/90 backdrop-blur-md border-b border-purple-900/30 px-4 flex items-center justify-between shrink-0 z-10">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSidebarOpen(true)}
+                  className="md:hidden w-8 h-8 rounded-lg bg-[#180d26] border border-purple-900/40 text-pink-300 flex items-center justify-center"
+                >
+                  <i className="fa-solid fa-bars text-xs"></i>
+                </button>
+
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl overflow-hidden mia-neon-glow shrink-0">
+                    <img src={MIA_AVATAR} alt="Miss Mia" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-bold text-white leading-tight">Miss Mia</h2>
+                    <p className="text-[10px] text-pink-300/50 truncate max-w-[150px] sm:max-w-xs">{activeChatTitle}</p>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={createNewChat} 
+                className="bg-[#180d26] border border-purple-900/50 hover:border-pink-500/40 text-pink-200 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition active:scale-95"
+              >
+                <i className="fa-solid fa-plus text-[10px] text-pink-400"></i>
+                <span className="text-[11px] font-medium">New</span>
+              </button>
+            </header>
+
+            {/* Messages Area */}
+            <div 
+              ref={chatContainerRef} 
+              className="flex-1 scroll-touch p-4 space-y-4"
+            >
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6">
+                  <div className="w-24 h-24 rounded-3xl overflow-hidden mia-neon-glow mb-4">
+                    <img src={MIA_AVATAR} alt="Miss Mia" className="w-full h-full object-cover" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white">Hey there, I'm Mia</h3>
+                  <p className="text-xs text-pink-300/60 mt-1 max-w-sm leading-relaxed">
+                    Ask me anything, explore new ideas, or tap the button below to start our chat!
+                  </p>
+                  <button 
+                    onClick={() => sendMessage(null, 'Hello Mia, introduce yourself!')}
+                    className="mt-5 bg-[#180d26] hover:bg-[#201133] border border-pink-500/40 text-pink-100 text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 active:scale-95 shadow-lg shadow-pink-900/20 transition"
+                  >
+                    <span>✨</span>
+                    <span className="font-semibold">Say Hello</span>
+                  </button>
+                </div>
+              ) : (
+                messages.map((msg, idx) => {
+                  const isUser = msg.role === 'user';
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`flex items-start gap-2.5 max-w-[85%] sm:max-w-lg ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                    >
+                      {/* Avatar */}
+                      {isUser ? (
+                        <div className="w-8 h-8 rounded-xl bg-purple-950/80 text-pink-200 flex items-center justify-center text-xs shrink-0 mt-0.5 border border-purple-800/40">
+                          <i className="fa-solid fa-user"></i>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-xl overflow-hidden mia-neon-glow shrink-0 mt-0.5">
+                          <img src={MIA_AVATAR} alt="Mia" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+
+                      <div className={`p-3 rounded-2xl text-xs leading-relaxed ${
+                        isUser 
+                          ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white rounded-tr-none shadow-md shadow-pink-600/20' 
+                          : 'bg-[#150a21] border border-purple-900/40 text-pink-50 rounded-tl-none'
+                      }`}>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {sending && (
+                <div className="flex items-center gap-2.5 mr-auto text-xs text-pink-300/70 p-2">
+                  <div className="w-7 h-7 rounded-xl overflow-hidden mia-neon-glow shrink-0">
+                    <img src={MIA_AVATAR} alt="Mia" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="animate-pulse">Mia is typing...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input Bar */}
+            <div className="p-3 bg-[#11091c]/95 border-t border-purple-900/30 shrink-0">
+              <form onSubmit={sendMessage} className="flex items-center gap-2 max-w-3xl mx-auto">
+                <input 
+                  type="text" 
+                  value={inputMessage} 
+                  onChange={e => setInputMessage(e.target.value)}
+                  disabled={user.messagesLeft <= 0 || sending}
+                  placeholder={user.messagesLeft <= 0 ? "You ran out of credits..." : "Ask Miss Mia something..."}
+                  className="flex-1 bg-[#180d26] border border-purple-900/50 rounded-xl py-2.5 px-3.5 text-xs text-pink-50 placeholder-pink-300/30 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition"
+                />
+                <button 
+                  type="submit" 
+                  disabled={!inputMessage.trim() || sending || user.messagesLeft <= 0}
+                  className="w-9 h-9 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:bg-[#180d26] disabled:text-pink-300/20 text-white rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-pink-600/20 transition active:scale-95"
+                >
+                  <i className="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+              </form>
+            </div>
+
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
