@@ -255,8 +255,11 @@
             setUser(prev => ({ ...prev, messagesLeft: res.data.messagesLeft }));
           }
         } catch (err) {
+          if (err.response?.status === 403) {
+            setUser(prev => ({ ...prev, messagesLeft: 0 }));
+          }
           const errMsg = err.response?.status === 403 
-            ? (err.response?.data?.message || 'Out of message credits.') 
+            ? 'Out of message credits! Contact @maiko_o4 on X for free credits.\nانتهى رصيد الرسائل! تواصل مع @maiko_o4 على منصة X للحصول على رصيد مجاني.' 
             : 'Connection error. Please try again.';
           setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
         } finally {
@@ -588,6 +591,32 @@
               )}
             </div>
 
+            {/* Out of Credits Alert Banner (English & Arabic) */}
+            {user.messagesLeft <= 0 && (
+              <div className="px-3 pt-2 bg-[#11091c]/95">
+                <div className="max-w-3xl mx-auto bg-gradient-to-r from-pink-950/80 via-[#1f0d2e] to-purple-950/80 border border-pink-500/40 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-pink-950/50">
+                  <div className="text-center sm:text-left space-y-1">
+                    <p className="text-xs font-bold text-pink-200 flex items-center justify-center sm:justify-start gap-1.5">
+                      <i className="fa-solid fa-circle-exclamation text-pink-500"></i>
+                      <span>You've run out of credits! Contact me on X for free credits.</span>
+                    </p>
+                    <p className="text-xs font-semibold text-pink-300/90" dir="rtl">
+                      لقد نفد رصيدك! تواصل معي على منصة إكس (X) للحصول على رصيد مجاني.
+                    </p>
+                  </div>
+                  <a
+                    href="https://x.com/maiko_o4"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-pink-600/30 transition active:scale-95"
+                  >
+                    <i className="fa-brands fa-twitter text-xs"></i>
+                    <span>@maiko_o4</span>
+                  </a>
+                </div>
+              </div>
+            )}
+
             {/* Input Bar */}
             <div className="p-3 bg-[#11091c]/95 border-t border-purple-900/30 shrink-0">
               <form onSubmit={sendMessage} className="flex items-center gap-2 max-w-3xl mx-auto">
@@ -596,13 +625,13 @@
                   value={inputMessage} 
                   onChange={e => setInputMessage(e.target.value)}
                   disabled={user.messagesLeft <= 0 || sending}
-                  placeholder={user.messagesLeft <= 0 ? "You ran out of credits..." : "Ask Miss Mia something..."}
-                  className="flex-1 bg-[#180d26] border border-purple-900/50 rounded-xl py-2.5 px-3.5 text-xs text-pink-50 placeholder-pink-300/30 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition"
+                  placeholder={user.messagesLeft <= 0 ? "Out of credits / انتهى الرصيد - Contact @maiko_o4" : "Ask Miss Mia something..."}
+                  className="flex-1 bg-[#180d26] border border-purple-900/50 rounded-xl py-2.5 px-3.5 text-xs text-pink-50 placeholder-pink-300/30 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition disabled:opacity-60"
                 />
                 <button 
                   type="submit" 
                   disabled={!inputMessage.trim() || sending || user.messagesLeft <= 0}
-                  className="w-9 h-9 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:bg-[#180d26] disabled:text-pink-300/20 text-white rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-pink-600/20 transition active:scale-95"
+                  className="w-9 h-9 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:bg-[#180d26] disabled:from-transparent disabled:to-transparent disabled:text-pink-300/20 text-white rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-pink-600/20 transition active:scale-95"
                 >
                   <i className="fa-solid fa-paper-plane text-xs"></i>
                 </button>
